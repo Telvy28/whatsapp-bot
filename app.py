@@ -2,8 +2,14 @@ from flask import Flask, request
 import os
 import util
 import whatsappservices
+import logging
 
 app = Flask(__name__)
+
+# Configurar logging para que sea visible en Railway
+logging.basicConfig(level=logging.INFO)
+app.logger.setLevel(logging.INFO)
+
 @app.route('/welcome', methods=['GET'])
 def index():
     return "Welcome to the Flask App!"
@@ -34,18 +40,21 @@ def Verifytoken():
         return str(e), 500
     
 @app.route('/whatsapp', methods=['POST'])
-
-
 def RecivedMessage():
-
+    print("=" * 50)
+    print("=== WEBHOOK RECIBIDO ===")
+    print("=" * 50)
+    
     try:
         # Asegurarnos de que recibimos JSON
         if not request.is_json:
             raw = request.get_data(as_text=True)
+            print(f"ERROR: Body no es JSON. Raw body: {raw}")
             app.logger.warning("POST /whatsapp: body no JSON. Raw body: %s", raw)
             return "no event received - not json", 400
 
         body = request.get_json()
+        print(f"Payload recibido: {body}")
         app.logger.info("POST /whatsapp payload: %s", body)
 
         entries = body.get("entry", []) or []
@@ -60,42 +69,68 @@ def RecivedMessage():
                     found_message = True
                     number = message.get("from")
                     text = util.GetTextUser(message)
+                    
+                    print(f"Procesando mensaje de {number}: '{text}'")
+                    print(f"Phone ID: {phone_id}")
+                    
                     GenerateMessage(text, number, phone_id)
+                    
                     app.logger.info("Processed message from %s (phone_id=%s): %s", number, phone_id, text)
+                    print(f"Mensaje procesado exitosamente")
 
         if found_message:
+            print("✓ Evento procesado correctamente")
             return "EVENT_RECEIVED", 200
 
+        print("No se encontraron mensajes en el payload")
         app.logger.info("POST /whatsapp: no messages found in payload")
         return "no event received", 200
 
-    except Exception:
+    except Exception as e:
+        print(f"ERROR en webhook: {str(e)}")
         app.logger.exception("Error procesando webhook /whatsapp")
         return "internal error", 500
 
 def GenerateMessage(text, number, phone_id=None):
+    print(f"→ GenerateMessage llamado con texto: '{text}'")
+    
     # Respuesta por defecto - eco del mensaje del usuario
     data = util.TextMessage(f"Persona dijo: {text}", number)
+    print(f"→ Mensaje por defecto creado: eco del texto")
     
     # Respuestas especiales por palabra clave
     if "format" in text.lower():
         data = util.TextFormatMessage(number)
+        print("→ Mensaje tipo: FORMAT")
     elif "image" in text.lower():
         data = util.ImageMessage(number)
+        print("→ Mensaje tipo: IMAGE")
     elif "audio" in text.lower():
         data = util.AudioMessage(number)
+        print("→ Mensaje tipo: AUDIO")
     elif "video" in text.lower():
         data = util.VideoMessage(number)
+        print("→ Mensaje tipo: VIDEO")
     elif "document" in text.lower():
         data = util.DocumentMessage(number)
+        print("→ Mensaje tipo: DOCUMENT")
     elif "location" in text.lower():
         data = util.LocationMessage(number)
+        print("→ Mensaje tipo: LOCATION")
     elif "button" in text.lower():
         data = util.ButtonsMessage(number)
+        print("→ Mensaje tipo: BUTTON")
     elif "list" in text.lower():
         data = util.ListMessage(number)
+        print("→ Mensaje tipo: LIST")
 
-    whatsappservices.SendMessageWhatsapp(data)
+    print(f"→ Enviando mensaje a WhatsApp...")
+    resultado = whatsappservices.SendMessageWhatsapp(data)
+    
+    if resultado:
+        print("✓ Mensaje enviado exitosamente")
+    else:
+        print("✗ ERROR: Fallo al enviar mensaje")
 
 if __name__ == '__main__':
     port = int(os.getenv("PORT", 10000))  # Render usa PORT
