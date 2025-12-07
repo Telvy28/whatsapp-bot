@@ -1,0 +1,4 @@
+venv_API_whatsapp/
+__pycache__/
+*.pyc
+.env
