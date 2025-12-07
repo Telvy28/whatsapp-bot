@@ -73,25 +73,26 @@ def RecivedMessage():
         app.logger.exception("Error procesando webhook /whatsapp")
         return "internal error", 500
 
-def GenerateMessage(text, number,phone_id=None):
-
-    if "text" in text:
-        data = util.TextMessage("text", number)  # Directo, sin if
-    if "format" in text:
+def GenerateMessage(text, number, phone_id=None):
+    # Respuesta por defecto - eco del mensaje del usuario
+    data = util.TextMessage(f"Persona dijo: {text}", number)
+    
+    # Respuestas especiales por palabra clave
+    if "format" in text.lower():
         data = util.TextFormatMessage(number)
-    if "image" in text:
+    elif "image" in text.lower():
         data = util.ImageMessage(number)
-    if "audio" in text:
+    elif "audio" in text.lower():
         data = util.AudioMessage(number)
-    if "video" in text:
+    elif "video" in text.lower():
         data = util.VideoMessage(number)
-    if "document" in text:
+    elif "document" in text.lower():
         data = util.DocumentMessage(number)
-    if "location" in text:
+    elif "location" in text.lower():
         data = util.LocationMessage(number)
-    if "button" in text:
+    elif "button" in text.lower():
         data = util.ButtonsMessage(number)
-    if "list" in text:
+    elif "list" in text.lower():
         data = util.ListMessage(number)
 
     whatsappservices.SendMessageWhatsapp(data)
