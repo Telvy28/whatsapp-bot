@@ -3,135 +3,169 @@ import os
 import util
 import whatsappservices
 import logging
+from datetime import datetime
+import pytz # Necesario para la hora de Perú, asegúrate de instalarlo o usar hora server
 
 app = Flask(__name__)
-
-# Configurar logging para que sea visible en Railway
 logging.basicConfig(level=logging.INFO)
-app.logger.setLevel(logging.INFO)
+
+# --- MEMORIA TEMPORAL (Diccionario) ---
+# En producción real, esto debería ir a una Base de Datos (Supabase/Sheets)
+# Estructura: { "519...": { "step": 0, "name": "Pepe", "category": "Camión" } }
+users_state = {} 
 
 @app.route('/welcome', methods=['GET'])
 def index():
-    return "Welcome to the Flask App!"
+    return "Bot de Gabriela Paucar Activo"
 
 @app.route('/whatsapp', methods=['GET'])
 def Verifytoken():
-
     try:
         access_token = os.getenv("VERIFY_TOKEN")
         token = request.args.get("hub.verify_token")
         challenge = request.args.get("hub.challenge")
-        # Caso 1: petición de verificación correcta (ambos parámetros presentes)
-        if token is not None and challenge is not None:
-            if token == access_token:
-                return challenge
-            # token presente pero no coincide
-            return "Invalid verify token", 403
-
-        # Caso 2: GET sin parámetros -> devolver información útil (200)
-        if token is None and challenge is None:
-            return (
-                "Webhook endpoint: usar '?hub.verify_token=...&hub.challenge=...' "
-                "para verificación de webhook."), 200
-
-        # Caso 3: parámetros incompletos -> bad request
-        return "Missing parameters", 400
+        if token is not None and challenge is not None and token == access_token:
+            return challenge
+        return "Auth Failed", 403
     except Exception as e:
         return str(e), 500
-    
+
 @app.route('/whatsapp', methods=['POST'])
 def RecivedMessage():
-    print("=" * 50)
-    print("=== WEBHOOK RECIBIDO ===")
-    print("=" * 50)
-    
     try:
-        # Asegurarnos de que recibimos JSON
-        if not request.is_json:
-            raw = request.get_data(as_text=True)
-            print(f"ERROR: Body no es JSON. Raw body: {raw}")
-            app.logger.warning("POST /whatsapp: body no JSON. Raw body: %s", raw)
-            return "no event received - not json", 400
-
         body = request.get_json()
-        print(f"Payload recibido: {body}")
-        app.logger.info("POST /whatsapp payload: %s", body)
+        entry = body["entry"][0]
+        changes = entry["changes"][0]
+        value = changes["value"]
+        
+        if "messages" in value:
+            message = value["messages"][0]
+            number = message["from"]
+            text_user = util.GetTextUser(message)
+            
+            # Inicializar usuario si no existe
+            if number not in users_state:
+                users_state[number] = {"step": "START"}
 
-        entries = body.get("entry", []) or []
-        found_message = False
+            process_conversation(text_user, number)
 
-        for entry in entries:
-            for change in entry.get("changes", []) or []:
-                value = change.get("value", {})
-                phone_id = (value.get("metadata") or {}).get("phone_number_id")
-                messages = value.get("messages") or []
-                for message in messages:
-                    found_message = True
-                    number = message.get("from")
-                    text = util.GetTextUser(message)
-                    
-                    print(f"Procesando mensaje de {number}: '{text}'")
-                    print(f"Phone ID: {phone_id}")
-                    
-                    GenerateMessage(text, number, phone_id)
-                    
-                    app.logger.info("Processed message from %s (phone_id=%s): %s", number, phone_id, text)
-                    print(f"Mensaje procesado exitosamente")
-
-        if found_message:
-            print("✓ Evento procesado correctamente")
-            return "EVENT_RECEIVED", 200
-
-        print("No se encontraron mensajes en el payload")
-        app.logger.info("POST /whatsapp: no messages found in payload")
-        return "no event received", 200
-
+        return "EVENT_RECEIVED", 200
     except Exception as e:
-        print(f"ERROR en webhook: {str(e)}")
-        app.logger.exception("Error procesando webhook /whatsapp")
-        return "internal error", 500
+        print(f"Error: {e}")
+        return "EVENT_RECEIVED", 200
 
-def GenerateMessage(text, number, phone_id=None):
-    print(f"→ GenerateMessage llamado con texto: '{text}'")
+def get_time_greeting():
+    # Obtener hora Perú
+    tz_peru = pytz.timezone('America/Lima')
+    hora_actual = datetime.now(tz_peru).hour
     
-    # Respuesta por defecto - eco del mensaje del usuario
-    data = util.TextMessage(f"Persona dijo: {text}", number)
-    print(f"→ Mensaje por defecto creado: eco del texto")
-    
-    # Respuestas especiales por palabra clave
-    if "format" in text.lower():
-        data = util.TextFormatMessage(number)
-        print("→ Mensaje tipo: FORMAT")
-    elif "image" in text.lower():
-        data = util.ImageMessage(number)
-        print("→ Mensaje tipo: IMAGE")
-    elif "audio" in text.lower():
-        data = util.AudioMessage(number)
-        print("→ Mensaje tipo: AUDIO")
-    elif "video" in text.lower():
-        data = util.VideoMessage(number)
-        print("→ Mensaje tipo: VIDEO")
-    elif "document" in text.lower():
-        data = util.DocumentMessage(number)
-        print("→ Mensaje tipo: DOCUMENT")
-    elif "location" in text.lower():
-        data = util.LocationMessage(number)
-        print("→ Mensaje tipo: LOCATION")
-    elif "button" in text.lower():
-        data = util.ButtonsMessage(number)
-        print("→ Mensaje tipo: BUTTON")
-    elif "list" in text.lower():
-        data = util.ListMessage(number)
-        print("→ Mensaje tipo: LIST")
-
-    print(f"→ Enviando mensaje a WhatsApp...")
-    resultado = whatsappservices.SendMessageWhatsapp(data)
-    
-    if resultado:
-        print("✓ Mensaje enviado exitosamente")
+    if 5 <= hora_actual < 12:
+        return "Buenos días"
+    elif 12 <= hora_actual < 18:
+        return "Buenas tardes"
     else:
-        print("✗ ERROR: Fallo al enviar mensaje")
+        return "Buenas noches"
+
+def process_conversation(text, number):
+    state = users_state[number]
+    step = state.get("step")
+    
+    # --- PASO 0: SALUDO INICIAL ---
+    if step == "START":
+        msg = "👋 Te saluda *Gabriela Paucar* - 👩🏻‍💼 Asesora Comercial de ISUZU CAMIONES AUTOMOTRIZ CISNE.\n📍 SEDE LIMA.\n\nPara atenderte mejor, por favor indícame: *¿Cuál es tu nombre y apellido?*"
+        data = util.TextMessage(msg, number)
+        whatsappservices.SendMessageWhatsapp(data)
+        users_state[number]["step"] = "WAITING_NAME"
+        
+    # --- PASO 1: CAPTURAR NOMBRE Y PEDIR DNI ---
+    elif step == "WAITING_NAME":
+        name = text.title() # Convertir a mayúscula inicial
+        users_state[number]["name"] = name
+        
+        saludo = get_time_greeting()
+        msg = f"{saludo} estimado *{name}*. Un gusto saludarte.\n\nPara continuar, por favor bríndame tu *DNI o RUC* y desde qué *Departamento/Provincia* nos escribes (Ej: 1028937, Huancayo)."
+        
+        data = util.TextMessage(msg, number)
+        whatsappservices.SendMessageWhatsapp(data)
+        users_state[number]["step"] = "WAITING_DNI_LOC"
+
+    # --- PASO 2: ELEGIR TIPO DE VEHICULO ---
+    elif step == "WAITING_DNI_LOC":
+        # Aquí guardaríamos el DNI en base de datos en el futuro
+        users_state[number]["dni_loc"] = text
+        
+        # Opciones para el menú
+        options = [
+            {"id": "cat_1", "title": "Camión Isuzu", "description": "Carga pesada y ligera"},
+            {"id": "cat_2", "title": "Camionetas", "description": "Pickups y SUVs"}
+        ]
+        
+        data = util.ListMessage(number, "Vehículos Isuzu", "¿En qué tipo de unidad estás interesado?", options, "Ver Modelos")
+        whatsappservices.SendMessageWhatsapp(data)
+        users_state[number]["step"] = "WAITING_CATEGORY"
+
+    # --- PASO 3: ELEGIR MODELO ESPECIFICO ---
+    elif step == "WAITING_CATEGORY":
+        category_choice = text.lower()
+        users_state[number]["category"] = category_choice
+        
+        options = []
+        if "camión" in category_choice or "isuzu" in category_choice:
+            # Estos datos luego vendrán de Google Sheets
+            options = [
+                {"id": "mod_1", "title": "FVR 10ton", "description": "Ideal para carga pesada"},
+                {"id": "mod_2", "title": "NLR 3TON", "description": "Urbano y versátil"},
+                {"id": "mod_3", "title": "NPS 4x4", "description": "Todo terreno"}
+            ]
+            msg_body = "Excelente elección. Isuzu es líder en camiones. ¿Qué modelo busca?"
+        elif "camioneta" in category_choice:
+            options = [
+                {"id": "mod_4", "title": "Chevrolet Captiva", "description": "SUV Familiar"},
+                {"id": "mod_5", "title": "Subaru XL", "description": "Aventura y confort"}
+            ]
+            msg_body = "¿Qué camioneta se ajusta a sus necesidades?"
+        else:
+            # Caso de error o opción no reconocida, volver a mostrar categorías
+            options = [{"id": "err", "title": "Volver a intentar", "description": ""}]
+            msg_body = "No entendí su selección. Por favor seleccione de la lista."
+
+        data = util.ListMessage(number, "Modelos Disponibles", msg_body, options, "Ver Catálogo")
+        whatsappservices.SendMessageWhatsapp(data)
+        users_state[number]["step"] = "WAITING_MODEL"
+
+    # --- PASO 4: ELEGIR COLOR ---
+    elif step == "WAITING_MODEL":
+        users_state[number]["model"] = text
+        
+        # Usamos botones simples (máximo 3 en WhatsApp)
+        buttons = ["Blanco", "Rojo", "Azul"]
+        msg = f"Perfecto, el *{text}* es una gran máquina.\n¿Tiene algún color de preferencia?"
+        
+        data = util.ButtonsMessage(number, msg, buttons)
+        whatsappservices.SendMessageWhatsapp(data)
+        users_state[number]["step"] = "WAITING_COLOR"
+
+    # --- PASO 5: AGENDAR LLAMADA ---
+    elif step == "WAITING_COLOR":
+        users_state[number]["color"] = text
+        
+        nombre = users_state[number].get("name")
+        modelo = users_state[number].get("model")
+        
+        msg = f"Gracias Don {nombre}. Tengo registrado su interés en un *{modelo}* color {text}.\n\n📞 *¿Está libre para una breve llamada con la asesora Gabriela?* \n\nPor favor indíqueme a qué hora prefiere que lo llamemos."
+        
+        data = util.TextMessage(msg, number)
+        whatsappservices.SendMessageWhatsapp(data)
+        users_state[number]["step"] = "FINISHED"
+    
+    # --- FINAL ---
+    elif step == "FINISHED":
+        msg = "¡Entendido! La asesora Gabriela Paucar se comunicará con usted en el horario indicado. Muchas gracias por contactar a Isuzu Automotriz Cisne."
+        data = util.TextMessage(msg, number)
+        whatsappservices.SendMessageWhatsapp(data)
+        # Opcional: Reiniciar estado para volver a empezar en el futuro
+        # users_state[number]["step"] = "START"
 
 if __name__ == '__main__':
-    port = int(os.getenv("PORT", 10000))  # Render usa PORT
+    port = int(os.getenv("PORT", 8080))
     app.run(host='0.0.0.0', port=port)

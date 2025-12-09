@@ -1,31 +1,30 @@
 def GetTextUser(message):
     text = ""
-    typemessage = message["type"]
+    typeMessage = message["type"]
 
-    if typemessage == "text":
+    if typeMessage == "text":
         text = (message["text"])["body"]
-    elif typemessage == "interactive":
+    elif typeMessage == "interactive":
         interactiveObject = message["interactive"]
-        typeinteractive = interactiveObject["type"]
-        if typeinteractive == "button_reply":
+        typeInteractive = interactiveObject["type"]
+        if typeInteractive == "button_reply":
             text = (interactiveObject["button_reply"])["title"]
-        elif typeinteractive == "list_reply":
-            text = (interactiveObject["list_reply"])["title"]
+            # También podríamos devolver el ID si lo necesitas para lógica interna
+        elif typeInteractive == "list_reply":
+            text = (interactiveObject["list_reply"])["title"] # O description
         else:
-            print("Tipo interactivo no soportado:")
+            print("sin mensaje")
     else:
-        print("Tipo de mensaje no soportado:", typemessage)
+        print("sin mensaje")
     return text
 
-
+# Mensajes Simples
 def TextMessage(text, number):
     data = {
             "messaging_product": "whatsapp",    
             "to": number,
-            "text": {
-                "body": text
-            },
             "type": "text",
+            "text": { "body": text }
             }
     return data
 
@@ -104,93 +103,63 @@ def LocationMessage(number):
             }
     return data
 
-def ButtonsMessage(number):
-    data = {
-                "messaging_product": "whatsapp",
-                "recipient_type": "individual",
-                "to": number,
-                "type": "interactive",
-                "interactive": {
-                    "type": "button",
-                    "header": {
-                        "type": "text",
-                        "text": "identifiacion de usuario",
-                    },
-                    "body": {
-                        "text": "¿Confirmas tu registro?"
-                    },
-                    "action": {
-                        "buttons": [
-                            {
-                                "type": "reply",
-                                "reply": {
-                                    "id": "001",
-                                    "title": "Si confirmo 👍"
-                                }
-                            },
-                            {
-                                "type": "reply",
-                                "reply": {
-                                    "id": "002",
-                                    "title": "No joven 🤕"
-                                }
-                            }
-                        ]
-                    }
-                }
+# Mensaje de Botones (Máximo 3 opciones)
+def ButtonsMessage(number, body_text, buttons_list):
+    # buttons_list: ["Opción 1", "Opción 2"]
+    buttons = []
+    for i, btn_text in enumerate(buttons_list):
+        buttons.append({
+            "type": "reply",
+            "reply": {
+                "id": f"btn_{i}",
+                "title": btn_text
             }
+        })
+
+    data = {
+        "messaging_product": "whatsapp",
+        "recipient_type": "individual",
+        "to": number,
+        "type": "interactive",
+        "interactive": {
+            "type": "button",
+            "body": { "text": body_text },
+            "action": { "buttons": buttons }
+        }
+    }
     return data
 
 
-def ListMessage(number):
+# Mensaje de Lista (Menú desplegable)
+def ListMessage(number, header_text, body_text, options_list, title_list="Opciones"):
+    # options_list debe ser una lista de diccionarios: [{"id": "001", "title": "Opción 1", "description": "desc"}]
+    rows = []
+    for i, option in enumerate(options_list):
+        rows.append({
+            "id": option["id"],
+            "title": option["title"],
+            "description": option.get("description", "")[:70] # WhatsApp limita caracteres
+        })
+
     data = {
-                "messaging_product": "whatsapp",
-                "to": number,
-                "type": "interactive",
-                "interactive": {
-                    "type": "list",
-                    "body": {
-                        "text": "✅ I have these options"
-                    },
-                    "footer": {
-                        "text": "Select an option"
-                    },
-                    "action": {
-                        "button": "See options",
-                        "sections": [
-                            {
-                                "title": "Buy and sell products",
-                                "rows": [
-                                    {
-                                        "id": "main-buy",
-                                        "title": "Buy",
-                                        "description": "Buy the best product your home"
-                                    },
-                                    {
-                                        "id": "main-sell",
-                                        "title": "Sell",
-                                        "description": "Sell your products"
-                                    }
-                                ]
-                            },
-                            {
-                                "title": "📍center of attention",
-                                "rows": [
-                                    {
-                                        "id": "main-agency",
-                                        "title": "Agency",
-                                        "description": "Your can visit our agency"
-                                    },
-                                    {
-                                        "id": "main-contact",
-                                        "title": "Contact center",
-                                        "description": "One of our agents will assist you"
-                                    }
-                                ]
-                            }
-                        ]
+        "messaging_product": "whatsapp",
+        "to": number,
+        "type": "interactive",
+        "interactive": {
+            "type": "list",
+            "header": { "type": "text", "text": header_text },
+            "body": { "text": body_text },
+            "footer": { "text": "Seleccione una opción" },
+            "action": {
+                "button": title_list,
+                "sections": [
+                    {
+                        "title": "Catálogo",
+                        "rows": rows
                     }
-                }
+                ]
             }
+        }
+    }
     return data
 
