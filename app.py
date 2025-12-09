@@ -79,7 +79,7 @@ def process_conversation(text, number):
         
     # --- PASO 1: CAPTURAR NOMBRE Y PEDIR DNI ---
     elif step == "WAITING_NAME":
-        name = text.title() # Convertir a mayúscula inicial
+        name = text.title()
         users_state[number]["name"] = name
         
         saludo = get_time_greeting()
@@ -89,18 +89,17 @@ def process_conversation(text, number):
         whatsappservices.SendMessageWhatsapp(data)
         users_state[number]["step"] = "WAITING_DNI_LOC"
 
-    # --- PASO 2: ELEGIR TIPO DE VEHICULO ---
+    # --- PASO 2: ELEGIR TIPO DE VEHICULO (AHORA CON BOTONES) ---
     elif step == "WAITING_DNI_LOC":
-        # Aquí guardaríamos el DNI en base de datos en el futuro
         users_state[number]["dni_loc"] = text
         
-        # Opciones para el menú
-        options = [
-            {"id": "cat_1", "title": "Camión Isuzu", "description": "Carga pesada y ligera"},
-            {"id": "cat_2", "title": "Camionetas", "description": "Pickups y SUVs"}
-        ]
+        # CAMBIO: Usamos Botones en vez de Lista para que se vean directo
+        # Nota: El texto del botón no puede ser muy largo
+        buttons = ["Camión Isuzu", "Camionetas"]
         
-        data = util.ListMessage(number, "Vehículos Isuzu", "¿En qué tipo de unidad estás interesado?", options, "Ver Modelos")
+        msg_body = "🚘 *Tipo de unidad*\n\n¿En qué tipo de unidad estás interesado?"
+        
+        data = util.ButtonsMessage(number, msg_body, buttons)
         whatsappservices.SendMessageWhatsapp(data)
         users_state[number]["step"] = "WAITING_CATEGORY"
 
@@ -110,34 +109,44 @@ def process_conversation(text, number):
         users_state[number]["category"] = category_choice
         
         options = []
+        msg_body = ""
+        header_list = "Modelos Disponibles"
+
+        # Lógica para detectar qué botón presionó
         if "camión" in category_choice or "isuzu" in category_choice:
-            # Estos datos luego vendrán de Google Sheets
             options = [
                 {"id": "mod_1", "title": "FVR 10ton", "description": "Ideal para carga pesada"},
                 {"id": "mod_2", "title": "NLR 3TON", "description": "Urbano y versátil"},
                 {"id": "mod_3", "title": "NPS 4x4", "description": "Todo terreno"}
             ]
             msg_body = "Excelente elección. Isuzu es líder en camiones. ¿Qué modelo busca?"
+            
         elif "camioneta" in category_choice:
             options = [
                 {"id": "mod_4", "title": "Chevrolet Captiva", "description": "SUV Familiar"},
                 {"id": "mod_5", "title": "Subaru XL", "description": "Aventura y confort"}
             ]
             msg_body = "¿Qué camioneta se ajusta a sus necesidades?"
+            
         else:
-            # Caso de error o opción no reconocida, volver a mostrar categorías
-            options = [{"id": "err", "title": "Volver a intentar", "description": ""}]
-            msg_body = "No entendí su selección. Por favor seleccione de la lista."
+            # Si el usuario escribió algo raro en vez de tocar el botón
+            msg_body = "⚠️ No entendí su selección.\nPor favor seleccione una opción tocando los botones de arriba 👆"
+            # Reenviamos los botones para que intente de nuevo
+            buttons = ["Camión Isuzu", "Camionetas"]
+            data = util.ButtonsMessage(number, msg_body, buttons)
+            whatsappservices.SendMessageWhatsapp(data)
+            return # Salimos para no cambiar de estado
 
-        data = util.ListMessage(number, "Modelos Disponibles", msg_body, options, "Ver Catálogo")
+        # Si detectó bien la categoría, mostramos la lista de modelos
+        data = util.ListMessage(number, header_list, msg_body, options, "Ver Modelos")
         whatsappservices.SendMessageWhatsapp(data)
         users_state[number]["step"] = "WAITING_MODEL"
 
     # --- PASO 4: ELEGIR COLOR ---
     elif step == "WAITING_MODEL":
+        # Guardamos el modelo seleccionado
         users_state[number]["model"] = text
         
-        # Usamos botones simples (máximo 3 en WhatsApp)
         buttons = ["Blanco", "Rojo", "Azul"]
         msg = f"Perfecto, el *{text}* es una gran máquina.\n¿Tiene algún color de preferencia?"
         
@@ -163,8 +172,6 @@ def process_conversation(text, number):
         msg = "¡Entendido! La asesora Gabriela Paucar se comunicará con usted en el horario indicado. Muchas gracias por contactar a Isuzu Automotriz Cisne."
         data = util.TextMessage(msg, number)
         whatsappservices.SendMessageWhatsapp(data)
-        # Opcional: Reiniciar estado para volver a empezar en el futuro
-        # users_state[number]["step"] = "START"
 
 if __name__ == '__main__':
     port = int(os.getenv("PORT", 8080))

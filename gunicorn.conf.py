@@ -5,7 +5,7 @@ port = os.getenv("PORT", "8080")
 
 # Configuración de gunicorn
 bind = f"0.0.0.0:{port}"
-workers = 2
+workers = 1
 worker_class = "sync"
 accesslog = "-"
 errorlog = "-"
