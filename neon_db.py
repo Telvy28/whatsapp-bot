@@ -18,13 +18,30 @@ class NeonDB:
     def _initialize_pool(self):
         """Crea pool de conexiones a Neon"""
         try:
+            # Leer variables
+            host = os.getenv("NEON_HOST")
+            database = os.getenv("NEON_DATABASE")
+            user = os.getenv("NEON_USER")
+            password = os.getenv("NEON_PASSWORD")
+            port = os.getenv("NEON_PORT", "5432")
+            
+            # Debug logging
+            logging.info(f"🔍 Intentando conectar a Neon:")
+            logging.info(f"  Host: {host}")
+            logging.info(f"  Database: {database}")
+            logging.info(f"  User: {user}")
+            logging.info(f"  Port: {port}")
+            
+            if not host or not database or not user or not password:
+                raise Exception("❌ Variables de entorno NEON_* no configuradas correctamente")
+            
             self.connection_pool = psycopg2.pool.SimpleConnectionPool(
                 1, 10,  # min=1, max=10 conexiones
-                host=os.getenv("NEON_HOST"),
-                database=os.getenv("NEON_DATABASE"),
-                user=os.getenv("NEON_USER"),
-                password=os.getenv("NEON_PASSWORD"),
-                port=os.getenv("NEON_PORT", "5432"),
+                host=host,
+                database=database,
+                user=user,
+                password=password,
+                port=port,
                 sslmode='require'
             )
             logging.info("✅ Neon DB pool inicializado")
