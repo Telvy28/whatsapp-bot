@@ -2,59 +2,37 @@ import psycopg2
 from psycopg2.extras import RealDictCursor
 from psycopg2 import pool
 import os
-from datetime import datetime
 import logging
 
 class NeonDB:
-    """
-    Maneja todas las operaciones con Neon PostgreSQL
-    Usa connection pooling para mejor performance
-    """
-    
     def __init__(self):
         self.connection_pool = None
         self._initialize_pool()
     
     def _initialize_pool(self):
-        """Crea pool de conexiones a Neon"""
         try:
-            # Leer variables
-            host = os.getenv("NEON_HOST")
-            database = os.getenv("NEON_DATABASE")
-            user = os.getenv("NEON_USER")
-            password = os.getenv("NEON_PASSWORD")
-            port = os.getenv("NEON_PORT", "5432")
+            # Buscamos la URL maestra
+            db_url = os.getenv("DATABASE_URL")
             
-            # Debug logging
-            logging.info(f"🔍 Intentando conectar a Neon:")
-            logging.info(f"  Host: {host}")
-            logging.info(f"  Database: {database}")
-            logging.info(f"  User: {user}")
-            logging.info(f"  Port: {port}")
+            if not db_url:
+                raise Exception("❌ La variable DATABASE_URL no está configurada en Railway")
             
-            if not host or not database or not user or not password:
-                raise Exception("❌ Variables de entorno NEON_* no configuradas correctamente")
-            
+            # Creamos el pool usando la URL directamente (más seguro y simple)
             self.connection_pool = psycopg2.pool.SimpleConnectionPool(
-                1, 10,  # min=1, max=10 conexiones
-                host=host,
-                database=database,
-                user=user,
-                password=password,
-                port=port,
-                sslmode='require'
+                minconn=1,
+                maxconn=10,
+                dsn=db_url  # DSN (Data Source Name) acepta la URL completa
             )
-            logging.info("✅ Neon DB pool inicializado")
+            logging.info("✅ Conexión a Neon DB exitosa")
+            
         except Exception as e:
-            logging.error(f"❌ Error conectando a Neon: {e}")
-            raise
+            logging.error(f"❌ Error fatal conectando a base de datos: {e}")
+            raise e
     
     def get_connection(self):
-        """Obtiene conexión del pool"""
         return self.connection_pool.getconn()
     
     def return_connection(self, conn):
-        """Devuelve conexión al pool"""
         self.connection_pool.putconn(conn)
     
     # ==================== CONVERSACIONES ====================
