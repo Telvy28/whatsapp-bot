@@ -10,7 +10,6 @@ import time
 # Importar nuevos módulos
 from neon_db import db
 from conversation_intelligence import intelligence, response_builder
-from telegram_notifier import telegram_notifier
 
 app = Flask(__name__)
 logging.basicConfig(
@@ -73,7 +72,6 @@ def get_time_greeting():
 
 def send_with_delay(data, number):
     """Envía mensaje con delay humanizado"""
-    whatsappservices.SendTypingIndicator(number)
     time.sleep(response_builder.typing_delay())
     result = whatsappservices.SendMessageWhatsapp(data)
     
@@ -116,12 +114,8 @@ def process_conversation(text, number):
         data = util.TextMessage(msg, number)
         send_with_delay(data, number)
         
-        # Notificar a Gabriela por Telegram
-        telegram_notifier.send_handoff_alert(
-            number, 
-            conversation.get('name', 'Cliente'), 
-            "Solicitud de atención humana"
-        )
+        # TODO: Notificación Telegram deshabilitada por ahora
+        logging.info(f"HANDOFF solicitado por {number}")
         return
     
     elif intent == 'salir':
@@ -158,7 +152,7 @@ def process_conversation(text, number):
         db.update_conversation_step(number, "WAITING_DNI_LOC", name=name)
         
         saludo = get_time_greeting()
-        msg = f"{saludo} estimado *{name}*. Un gusto saludarte.\n\nPara continuar, por favor brÃ­ndame tu *DNI o RUC* y desde qué *Departamento/Provincia* nos escribes.\n\n_Ejemplo: 10283749, Huancayo_"
+        msg = f"{saludo} estimado *{name}*. Un gusto saludarte.\n\nPara continuar, por favor bríndame tu *DNI o RUC* y desde qué *Departamento/Provincia* nos escribes.\n\n_Ejemplo: 10283749, Huancayo_"
         
         data = util.TextMessage(msg, number)
         send_with_delay(data, number)
@@ -273,10 +267,8 @@ def process_conversation(text, number):
         data = util.TextMessage(msg, number)
         send_with_delay(data, number)
         
-        # Enviar notificación a Gabriela por Telegram
-        summary = db.get_conversation_summary(number)
-        if summary:
-            telegram_notifier.send_lead_notification(summary)
+        # Log de lead completado
+        logging.info(f"✅ Lead completado: {number}")
     
     # --- CONVERSACIÓN TERMINADA ---
     elif step == "FINISHED":
